@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rm4n0s/go-observer/v2"
+	"github.com/rm4n0s/go-observer"
 )
 
 func runPublisher(prop observer.Property[int]) {
