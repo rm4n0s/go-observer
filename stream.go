@@ -63,7 +63,7 @@ func (s *stream[T]) Changes() chan struct{} {
 }
 
 func (s *stream[T]) OnChange(ctx context.Context, cb func(value T)) {
-	go func() {
+	go func(ctx context.Context, cb func(value T)) {
 		for {
 			select {
 			case <-s.Changes():
@@ -75,7 +75,7 @@ func (s *stream[T]) OnChange(ctx context.Context, cb func(value T)) {
 				return
 			}
 		}
-	}()
+	}(ctx, cb)
 }
 
 func (s *stream[T]) Next() T {
