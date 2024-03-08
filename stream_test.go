@@ -3,6 +3,7 @@ package observer
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,6 +40,33 @@ func TestStreamNextValue(t *testing.T) {
 	if val := stream.Next(); val != 20 {
 		t.Fatalf("Expecting 20 but got %#v\n", val)
 	}
+}
+
+func TestStreamOnChange(t *testing.T) {
+	t.Parallel()
+	state := newState(100)
+	stream := &stream[int]{state: state}
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	changed := &atomic.Bool{}
+	stream.OnChange(ctx, func(value int) {
+		if value != 10 {
+			t.Fatal("Expected correct value")
+		}
+		changed.Store(true)
+	})
+	stream.state.update(10)
+	time.Sleep(time.Millisecond)
+	if !changed.Load() {
+		t.Fatal("Expected changed")
+	}
+
+	stream.OnChange(ctx, func(_ int) {
+		t.Fatal("Expected not to run")
+	})
+	cancel()
+	stream.state.update(10)
+	time.Sleep(time.Millisecond)
 }
 
 func TestStreamDetectsChanges(t *testing.T) {
@@ -131,7 +159,7 @@ func TestStreamWaitNextCanceledCtx(t *testing.T) {
 	cancel()
 
 	updateVal := initialVal + 17
-	state = state.update(updateVal)
+	state.update(updateVal)
 
 	for i := 0; i < 100; i++ {
 		// ensure the method returns an error when a canceled context is used and doesn't advance the stream
@@ -201,7 +229,7 @@ func TestStreamPeek(t *testing.T) {
 	if val := stream.Peek(); val != 15 {
 		t.Fatalf("Expecting 15 but got %#v\n", val)
 	}
-	state = state.update(20)
+	state.update(20)
 	if val := stream.Peek(); val != 15 {
 		t.Fatalf("Expecting 15 but got %#v\n", val)
 	}
@@ -240,7 +268,7 @@ func TestStreamConcurrencyWithClones(t *testing.T) {
 func testStreamRead(s Stream[int], initial, final int, err chan error) {
 	val := s.Value()
 	if val != initial {
-		err <- fmt.Errorf("Expecting %#v but got %#v\n", initial, val)
+		err <- fmt.Errorf("expecting %#v but got %#v\n", initial, val)
 		return
 	}
 	for i := initial + 1; i <= final; i++ {
@@ -248,7 +276,7 @@ func testStreamRead(s Stream[int], initial, final int, err chan error) {
 		val = s.WaitNext()
 		expected := prevVal + 1
 		if val != expected {
-			err <- fmt.Errorf("Expecting %#v but got %#v\n", expected, val)
+			err <- fmt.Errorf("expecting %#v but got %#v\n", expected, val)
 			return
 		}
 	}

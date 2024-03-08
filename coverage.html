@@ -1,0 +1,304 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>v2: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/rm4n0s/go-observer/v2/property.go (100.0%)</option>
+				
+				<option value="file1">github.com/rm4n0s/go-observer/v2/state.go (100.0%)</option>
+				
+				<option value="file2">github.com/rm4n0s/go-observer/v2/stream.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package observer
+
+import "sync"
+
+// Property is an object that is continuously updated by one or more
+// publishers. It is completely goroutine safe: you can use Property
+// concurrently from multiple goroutines.
+type Property[T any] interface {
+        // Value returns the current value for this property.
+        Value() T
+
+        // Update sets a new value for this property.
+        Update(value T)
+
+        // Observe returns a newly created Stream for this property.
+        Observe() Stream[T]
+}
+
+// NewProperty creates a new Property with the initial value value.
+// It returns the created Property.
+func NewProperty[T any](value T) Property[T] <span class="cov2" title="21">{
+        return &amp;property[T]{state: newState(value)}
+}</span>
+
+type property[T any] struct {
+        sync.RWMutex
+        state *state[T]
+}
+
+func (p *property[T]) Value() T <span class="cov9" title="3003009">{
+        p.RLock()
+        defer p.RUnlock()
+        return p.state.value
+}</span>
+
+func (p *property[T]) Update(value T) <span class="cov10" title="3012012">{
+        p.Lock()
+        defer p.Unlock()
+        p.state = p.state.update(value)
+}</span>
+
+func (p *property[T]) Observe() Stream[T] <span class="cov9" title="3006315">{
+        p.RLock()
+        defer p.RUnlock()
+        return &amp;stream[T]{state: p.state}
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package observer
+
+type state[T any] struct {
+        value T
+        next  *state[T]
+        done  chan struct{}
+}
+
+func newState[T any](value T) *state[T] <span class="cov10" title="3012750">{
+        return &amp;state[T]{
+                value: value,
+                done:  make(chan struct{}),
+        }
+}</span>
+
+func (s *state[T]) update(value T) *state[T] <span class="cov9" title="3012690">{
+        s.next = newState(value)
+        close(s.done)
+        return s.next
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package observer
+
+import (
+        "context"
+)
+
+// Stream represents the list of values a property is updated to.  For every
+// property update, that value is appended to the list in the order they
+// happen. The value is discarded once you advance the stream.  Please note
+// that Stream is not goroutine safe: you cannot use the same stream on
+// multiple goroutines concurrently. If you want to use multiple streams for
+// the same property, either use Property.Observe (goroutine-safe) or use
+// Stream.Clone (before passing it to another goroutine).
+type Stream[T any] interface {
+        // Value returns the current value for this stream.
+        Value() T
+
+        // Changes returns the channel that is closed when a new value is available.
+        Changes() chan struct{}
+
+        // OnChange calls the callback for every change
+        OnChange(ctx context.Context, cb func(value T))
+
+        // Next advances this stream to the next state.
+        // You should never call this unless Changes channel is closed.
+        Next() T
+
+        // HasNext checks whether there is a new value available.
+        HasNext() bool
+
+        // WaitNext waits for Changes to be closed, advances the stream and returns
+        // the current value.
+        WaitNext() T
+
+        // WaitNextCtx does the same as WaitNext but returns earlier with an error if the given context is cancelled first.
+        WaitNextCtx(ctx context.Context) (T, error)
+
+        // Clone creates a new independent stream from this one but sharing the same
+        // Property. Updates to the property will be reflected in both streams but
+        // they may have different values depending on when they advance the stream
+        // with Next.
+        Clone() Stream[T]
+
+        // Peek return the value in the next state
+        // You should never call this unless Changes channel is closed.
+        Peek() T
+}
+
+type stream[T any] struct {
+        state *state[T]
+}
+
+func (s *stream[T]) Clone() Stream[T] <span class="cov5" title="3003">{
+        return &amp;stream[T]{state: s.state}
+}</span>
+
+func (s *stream[T]) Value() T <span class="cov6" title="9933">{
+        return s.state.value
+}</span>
+
+func (s *stream[T]) Changes() chan struct{} <span class="cov5" title="3708">{
+        return s.state.done
+}</span>
+
+func (s *stream[T]) OnChange(ctx context.Context, cb func(value T)) <span class="cov2" title="9">{
+        go func() </span><span class="cov2" title="9">{
+                for </span><span class="cov5" title="3012">{
+                        select </span>{
+                        case &lt;-s.Changes():<span class="cov5" title="3003">
+                                if s.HasNext() </span><span class="cov5" title="3003">{
+                                        s.Next()
+                                }</span>
+                                <span class="cov5" title="3003">cb(s.Value())</span>
+                        case &lt;-ctx.Done():<span class="cov2" title="9">
+                                return</span>
+                        }
+                }
+        }()
+}
+
+func (s *stream[T]) Next() T <span class="cov5" title="3408">{
+        s.state = s.state.next
+        return s.state.value
+}</span>
+
+func (s *stream[T]) HasNext() bool <span class="cov5" title="3033">{
+        select </span>{
+        case &lt;-s.state.done:<span class="cov5" title="3012">
+                return true</span>
+        default:<span class="cov2" title="21">
+                return false</span>
+        }
+}
+
+func (s *stream[T]) WaitNext() T <span class="cov10" title="6000258">{
+        &lt;-s.state.done
+        s.state = s.state.next
+        return s.state.value
+}</span>
+
+func (s *stream[T]) WaitNextCtx(ctx context.Context) (T, error) <span class="cov4" title="684">{
+        select </span>{
+        case &lt;-s.Changes():<span class="cov4" title="523">
+                // ensure that context is not canceled, only then advance the stream
+                if ctx.Err() == nil </span><span class="cov4" title="384">{
+                        return s.Next(), nil
+                }</span>
+
+        case &lt;-ctx.Done():<span class="cov3" title="161"></span>
+        }
+
+        <span class="cov4" title="300">var zeroVal T
+        return zeroVal, ctx.Err()</span>
+}
+
+func (s *stream[T]) Peek() T <span class="cov2" title="9">{
+        return s.state.next.value
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

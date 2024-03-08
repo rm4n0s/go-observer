@@ -1,8 +1,11 @@
 package observer
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestPropertyInitialValue(t *testing.T) {
@@ -73,7 +76,7 @@ func TestPropertyMultipleConcurrentReaders(t *testing.T) {
 	<-done
 }
 
-func TestPropertyMultipleConcurrentReadersWriters(t *testing.T) {
+func TestPropertyMultipleConcurrentReadersWriters(_ *testing.T) {
 	wg := &sync.WaitGroup{}
 	writer := func(prop Property[int], times int) {
 		defer wg.Done()
@@ -90,4 +93,31 @@ func TestPropertyMultipleConcurrentReadersWriters(t *testing.T) {
 		go writer(prop, times)
 	}
 	wg.Wait()
+}
+
+func TestPropertyOnChangeMultipleUpdates(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	initial := 1000
+	final := 2000
+	prop := NewProperty(initial)
+	count := &atomic.Int32{}
+	prop.Observe().OnChange(ctx, func(value int) {
+		count.Add(1)
+	})
+	for i := initial + 1; i <= final; i++ {
+		prop.Update(i)
+	}
+	time.Sleep(time.Millisecond)
+	if count.Load() != 1000 {
+		t.Fatal("Expected 1000 updates, but got", count)
+	}
+	cancel()
+	prop.Update(1)
+	prop.Update(2)
+	prop.Update(3)
+	time.Sleep(time.Millisecond)
+	if count.Load() != 1000 {
+		t.Fatal("Shouldn't update count after cancelation")
+	}
 }

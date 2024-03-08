@@ -1,18 +1,12 @@
-.PHONY: all deps gometalinter test cover
+.PHONY: all deps linter test cover
 
-all: gometalinter test cover
+all: linter test cover
 
 deps:
-	go get -u github.com/alecthomas/gometalinter
-	gometalinter --install
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.2
 
-gometalinter:
-	gometalinter --vendor --deadline=1m --tests \
-		--enable=gofmt \
-		--enable=goimports \
-		--enable=lll \
-		--enable=misspell \
-		--enable=unused
+linter:
+	golangci-lint run
 
 test:
 	go test -v -race -cpu=1,2,4 -coverprofile=coverage.txt -covermode=atomic

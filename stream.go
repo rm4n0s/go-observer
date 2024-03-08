@@ -1,6 +1,8 @@
 package observer
 
-import "context"
+import (
+	"context"
+)
 
 // Stream represents the list of values a property is updated to.  For every
 // property update, that value is appended to the list in the order they
@@ -15,6 +17,9 @@ type Stream[T any] interface {
 
 	// Changes returns the channel that is closed when a new value is available.
 	Changes() chan struct{}
+
+	// OnChange calls the callback for every change
+	OnChange(ctx context.Context, cb func(value T))
 
 	// Next advances this stream to the next state.
 	// You should never call this unless Changes channel is closed.
@@ -55,6 +60,22 @@ func (s *stream[T]) Value() T {
 
 func (s *stream[T]) Changes() chan struct{} {
 	return s.state.done
+}
+
+func (s *stream[T]) OnChange(ctx context.Context, cb func(value T)) {
+	go func() {
+		for {
+			select {
+			case <-s.Changes():
+				if s.HasNext() {
+					s.Next()
+				}
+				cb(s.Value())
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (s *stream[T]) Next() T {
